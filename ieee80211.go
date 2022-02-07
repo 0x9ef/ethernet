@@ -3,6 +3,41 @@
 // that can be found in the LICENSE file.
 package ethernet
 
+type FrameType uint16
+
+const (
+	Management FrameType = 0b00
+	Control    FrameType = 0b01
+	Data       FrameType = 0b10
+	Reserved   FrameType = 0b11
+)
+
+const (
+	SubtypeData                = 0b0000
+	SubtypeQosData             = 0b1000
+	SubtypeAssociationReq      = 0b0000
+	SubtypeAssociationResp     = 0b0001
+	SubtypeReassociationReq    = 0b0010
+	SubtypeReassociationResp   = 0b0011
+	SubtypeProbeReq            = 0b0100
+	SubtypeProbeResp           = 0b0101
+	SubtypeTimingAdvertisement = 0b0110
+	SubtypeReserved            = 0b0111
+	SubtypeBeacon              = 0b1000
+	SubtypeAtim                = 0b1001
+	SubtypeDisassociation      = 0b1010
+	SubtypeAuthentication      = 0b1011
+	SubtypeDeauthentication    = 0b1100
+	SubtypeAction              = 0b1101
+	SubtypeNack                = 0b1110
+	SubtypeTrigger             = 0b0010
+	SubtypeTack                = 0b0011
+	SubtypeControlWrapper      = 0b0111
+	SubtypeRts                 = 0b1011
+	SubtypeCts                 = 0b1100
+	SubtypeAck                 = 0b1101
+)
+
 func Encode80211Fc(version uint16, ftype uint16, subtype uint16,
 	tds uint16, fds uint16, mf uint16, rt uint16,
 	pm uint16, md uint16, wep uint16, order uint16) uint16 {

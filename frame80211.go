@@ -40,7 +40,7 @@ func NewFrame80211(ra, ta, sa, da HardwareAddr, payload []byte) *Frame80211 {
 		da:       da,
 		payload:  payload,
 	}
-	f.fcs = Compute80211FCS(f)
+	f.fcs = ComputeFCS(f)
 	return f
 }
 
@@ -124,12 +124,6 @@ func Unmarshal80211(b []byte) (*Frame80211, error) {
 	n += pSz // + payload size
 	copy(f.fcs[:], b[n:])
 	return f, nil
-}
-
-func Compute80211FCS(f *Frame80211) (fcs [4]byte) {
-	binaryFrame := f.Marshal()
-	copy(fcs[:], binaryFrame[len(binaryFrame)-4:])
-	return fcs
 }
 
 func (f *Frame80211) size() int {

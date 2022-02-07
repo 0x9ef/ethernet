@@ -165,8 +165,17 @@ func Unmarshal(b []byte) (*Frame, error) {
 	return f, nil
 }
 
-func ComputeFCS(f *Frame) (fcs [4]byte) {
-	binaryFrame := f.Marshal()
+// ComputeFCS compute and return a frame check sequence (FCS)
+// which is an error-detecting code added to a frame in a communication protocol.
+// Frames are used to send payload data from a source to a destination.
+func ComputeFCS(f interface{}) (fcs [4]byte) {
+	var binaryFrame []byte
+	switch v := f.(type) {
+	case *Frame:
+		binaryFrame = v.Marshal()
+	case *Frame80211:
+		binaryFrame = v.Marshal()
+	}
 	copy(fcs[:], binaryFrame[len(binaryFrame)-4:])
 	return fcs
 }
