@@ -43,3 +43,8 @@ func (h HardwareAddr) String() string {
 func (h HardwareAddr) Compare(raddr HardwareAddr) bool {
 	return bytes.Compare(h[:], raddr[:]) == 0
 }
+
+// IsEmpty returns true if MAC address have only zeroes
+func (h HardwareAddr) IsEmpty() bool {
+	return h == HardwareAddr{0, 0, 0, 0, 0, 0}
+}

@@ -6,37 +6,45 @@ package ethernet
 type FrameType uint16
 
 const (
-	Management FrameType = 0b00
-	Control    FrameType = 0b01
-	Data       FrameType = 0b10
-	Reserved   FrameType = 0b11
+	Management FrameType = iota
+	Control
+	Data
+	Reserved
 )
 
 const (
-	SubtypeData                = 0b0000
-	SubtypeQosData             = 0b1000
-	SubtypeAssociationReq      = 0b0000
-	SubtypeAssociationResp     = 0b0001
-	SubtypeReassociationReq    = 0b0010
-	SubtypeReassociationResp   = 0b0011
-	SubtypeProbeReq            = 0b0100
-	SubtypeProbeResp           = 0b0101
-	SubtypeTimingAdvertisement = 0b0110
-	SubtypeReserved            = 0b0111
-	SubtypeBeacon              = 0b1000
-	SubtypeAtim                = 0b1001
-	SubtypeDisassociation      = 0b1010
-	SubtypeAuthentication      = 0b1011
-	SubtypeDeauthentication    = 0b1100
-	SubtypeAction              = 0b1101
-	SubtypeNack                = 0b1110
-	SubtypeTrigger             = 0b0010
-	SubtypeTack                = 0b0011
-	SubtypeControlWrapper      = 0b0111
-	SubtypeRts                 = 0b1011
-	SubtypeCts                 = 0b1100
-	SubtypeAck                 = 0b1101
+	SubtypeData                = 0x0
+	SubtypeQosData             = 0x8
+	SubtypeAssociationReq      = 0x0
+	SubtypeAssociationResp     = 0x1
+	SubtypeReassociationReq    = 0x2
+	SubtypeReassociationResp   = 0x3
+	SubtypeProbeReq            = 0x4
+	SubtypeProbeResp           = 0x5
+	SubtypeTimingAdvertisement = 0x6
+	SubtypeReserved            = 0x7
+	SubtypeBeacon              = 0x8
+	SubtypeAtim                = 0x9
+	SubtypeDisassociation      = 0xA
+	SubtypeAuthentication      = 0xB
+	SubtypeDeauthentication    = 0xC
+	SubtypeAction              = 0xD
+	SubtypeNack                = 0xE
+	SubtypeTrigger             = 0x2
+	SubtypeTack                = 0x3
+	SubtypeControlWrapper      = 0x7
+	SubtypeRts                 = 0xB
+	SubtypeCts                 = 0xC
+	SubtypeAck                 = 0xD
 )
+
+func Encode80211Sc(fn uint16, sn uint16) uint16 {
+	return (sn << 4) | fn
+}
+
+func Decode80211Sc(encoded uint16) (fn uint16, sn uint16) {
+	return encoded & 15, (encoded >> 4) & 4095
+}
 
 func Encode80211Fc(version uint16, ftype uint16, subtype uint16,
 	tds uint16, fds uint16, mf uint16, rt uint16,

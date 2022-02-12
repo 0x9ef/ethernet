@@ -18,11 +18,11 @@ import (
 type Frame80211 struct {
 	fc       uint16
 	duration uint16
-	ra       HardwareAddr // receiver address
-	ta       HardwareAddr // transmitter address
-	sa       HardwareAddr // source address
-	sc       uint16       // sequence control
-	da       HardwareAddr // destination address
+	addr1    HardwareAddr
+	addr2    HardwareAddr
+	addr3    HardwareAddr
+	sc       uint16 // sequence control
+	addr4    HardwareAddr
 	payload  []byte
 	fcs      [4]byte
 }
@@ -30,31 +30,60 @@ type Frame80211 struct {
 var min80211Size = 30
 var max80211MSDU = 2304
 
-func NewFrame80211(ra, ta, sa, da HardwareAddr, payload []byte) *Frame80211 {
+func NewFrame80211(addr1, addr2, addr3, addr4 HardwareAddr, payload []byte) *Frame80211 {
 	f := &Frame80211{
 		fc:       0,
 		duration: 0,
-		ra:       ra,
-		ta:       ta,
-		sa:       sa,
-		da:       da,
+		addr1:    addr1,
+		addr2:    addr1,
+		addr3:    addr3,
+		addr4:    addr4,
+		sc:       0,
 		payload:  payload,
 	}
 	f.fcs = ComputeFCS(f)
 	return f
 }
+Code Reorganization. 
+- Removal of MTU 1500 check. 
+- Renaming of ra, ta, da, sa to addr1, addr2, addr3, addr4 
+- Recognition of receiver, transmitter, source, destination addresses.
 
 // Receiver return Receiver Address (RA)
-func (f *Frame80211) Receiver() HardwareAddr { return f.ra }
+func (f *Frame80211) Receiver() HardwareAddr { return f.addr1 }
 
 // Transmitter return Transmitter Address (TA)
-func (f *Frame80211) Transmitter() HardwareAddr { return f.ta }
+func (f *Frame80211) Transmitter() HardwareAddr { return f.addr2 }
 
 // Source return source address (SA)
-func (f *Frame80211) Source() HardwareAddr { return f.sa }
+func (f *Frame80211) Source() HardwareAddr {
+	var sa HardwareAddr
+	if (f.fc>>8)&1 == 0 && (f.fc>>9)&1 == 0 {
+		sa = f.addr2
+	} else if (f.fc>>8)&1 == 0 && (f.fc>>9)&1 == 1 {
+		sa = f.addr3
+	} else if (f.fc>>8)&1 == 1 && (f.fc>>9)&1 == 0 {
+		sa = f.addr2
+	} else if (f.fc>>8)&1 == 1 && (f.fc>>9)&1 == 1 {
+		sa = f.addr4
+	}
+	return sa
+}
 
 // Destination return destination address (DA)
-func (f *Frame80211) Destination() HardwareAddr { return f.da }
+func (f *Frame80211) Destination() HardwareAddr {
+	var da HardwareAddr
+	if (f.fc>>8)&1 == 0 && (f.fc>>9)&1 == 0 {
+		da = f.addr1
+	} else if (f.fc>>8)&1 == 0 && (f.fc>>9)&1 == 1 {
+		da = f.addr1
+	} else if (f.fc>>8)&1 == 1 && (f.fc>>9)&1 == 0 {
+		da = f.addr3
+	} else if (f.fc>>8)&1 == 1 && (f.fc>>9)&1 == 1 {
+		da = f.addr3
+	}
+	return da
+}
 
 // Payload return payload data, maximum payload size defined in max80211MSDU
 func (f *Frame80211) Payload() []byte { return f.payload }
@@ -82,15 +111,15 @@ func (f *Frame80211) Marshal() []byte {
 	binary.BigEndian.PutUint16(b[0:2], f.fc)
 	binary.BigEndian.PutUint16(b[2:4], f.duration)
 	n += 4
-	copy(b[n:n+6], f.ra[:])
+	copy(b[n:n+6], f.addr1[:])
 	n += 6
-	copy(b[n:n+6], f.ta[:])
+	copy(b[n:n+6], f.addr2[:])
 	n += 6
-	copy(b[n:n+6], f.sa[:])
+	copy(b[n:n+6], f.addr3[:])
 	n += 6
 	binary.BigEndian.PutUint16(b[n:n+2], f.sc)
 	n += 2
-	copy(b[n:n+6], f.da[:])
+	copy(b[n:n+6], f.addr4[:])
 	n += 6
 	copy(b[n:sz-4], f.payload)
 	n += pSz
@@ -110,15 +139,15 @@ func Unmarshal80211(b []byte) (*Frame80211, error) {
 	f.fc = binary.BigEndian.Uint16(b[0:2])
 	f.duration = binary.BigEndian.Uint16(b[2:4])
 	n += 4
-	copy(f.ra[:], b[n:n+6])
+	copy(f.addr1[:], b[n:n+6])
 	n += 6
-	copy(f.ta[:], b[n:n+6])
+	copy(f.addr2[:], b[n:n+6])
 	n += 6
-	copy(f.sa[:], b[n:n+6])
+	copy(f.addr3[:], b[n:n+6])
 	n += 6
 	f.sc = binary.BigEndian.Uint16(b[n : n+2])
 	n += 2
-	copy(f.da[:], b[n:n+6])
+	copy(f.addr4[:], b[n:n+6])
 	n += 6
 	f.payload = b[n : sz-4]
 	n += pSz // + payload size

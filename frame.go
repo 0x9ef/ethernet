@@ -31,14 +31,15 @@ type Frame struct {
 
 var preamble = [8]byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAB, 0xD5}
 
-// NewFrame return constrcted ethernet frame with basic source, destination MAC address and payload which
-// this frame contains
+// NewFrame return constructed ethernet frame with basic source, destination MAC address
+// and payload which this frame contains. If payload have lengh which less than minPayloadSize
+// we fills remaining bytes with zeroes
 func NewFrame(dst HardwareAddr, src HardwareAddr, payload []byte) *Frame {
 	var b []byte
 	pSz := len(payload)
 	if pSz < minPayloadSize {
 		b = make([]byte, minPayloadSize)
-		copy(b[:pSz], payload) // remaining bytes fills with zero
+		copy(b[:pSz], payload)
 	} else {
 		b = payload
 	}
@@ -50,7 +51,6 @@ func NewFrame(dst HardwareAddr, src HardwareAddr, payload []byte) *Frame {
 		tag8021q:  nil,
 		etherType: 0x0800,
 		payload:   b,
-		// fcs nullable, calculate checksum by Marshal
 	}
 	f.fcs = ComputeFCS(f) // setup FCS
 	return f
@@ -91,14 +91,9 @@ func (f *Frame) SetFCS(fcs [4]byte) { f.fcs = fcs }
 // Check checks if the frame fields conform to RFC standards.
 // If so, it throws an error describing the problem
 func (f *Frame) Check() error {
-	if len(f.payload) > 1500 {
-		return errors.New("invalid frame payload length")
-	}
-
 	if f.src == BroadcastAddr || f.src == f.dst {
 		return errors.New("source address is broadcast or source address equals to destination address")
 	}
-
 	if f.preamble != preamble {
 		return errors.New("invalid ethernet preamble")
 	}
