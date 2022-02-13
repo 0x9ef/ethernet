@@ -44,10 +44,6 @@ func NewFrame80211(addr1, addr2, addr3, addr4 HardwareAddr, payload []byte) *Fra
 	f.fcs = ComputeFCS(f)
 	return f
 }
-Code Reorganization. 
-- Removal of MTU 1500 check. 
-- Renaming of ra, ta, da, sa to addr1, addr2, addr3, addr4 
-- Recognition of receiver, transmitter, source, destination addresses.
 
 // Receiver return Receiver Address (RA)
 func (f *Frame80211) Receiver() HardwareAddr { return f.addr1 }
