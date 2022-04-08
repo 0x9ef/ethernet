@@ -23,13 +23,17 @@ type Frame struct {
 	preamble  [8]byte      // SFD as last octet
 	dst       HardwareAddr // destination MAC address
 	src       HardwareAddr // source MAC address
-	tag8021q  *Tag8021q
+	tag8021q  *Tag8021q    // 802.1Q (can be nil)
 	etherType EtherType
 	payload   []byte
 	fcs       [4]byte
 }
 
+// ethernet native preamble 10101010 10101010 10101010 10101010 10101010 10101010 10101010 10101011
 var preamble = [8]byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAB, 0xD5}
+
+const minSize = 64
+const minPayloadSize = 46
 
 // NewFrame return constructed ethernet frame with basic source, destination MAC address
 // and payload which this frame contains. If payload have lengh which less than minPayloadSize
@@ -88,20 +92,35 @@ func (f *Frame) SetTag8021q(tag *Tag8021q) { f.tag8021q = tag }
 func (f *Frame) FCS() [4]byte       { return f.fcs }
 func (f *Frame) SetFCS(fcs [4]byte) { f.fcs = fcs }
 
-// Check checks if the frame fields conform to RFC standards.
-// If so, it throws an error describing the problem
+// Check if frame has an valid ethernet preamble
 func (f *Frame) Check() error {
-	if f.src == BroadcastAddr || f.src == f.dst {
-		return errors.New("source address is broadcast or source address equals to destination address")
-	}
 	if f.preamble != preamble {
 		return errors.New("invalid ethernet preamble")
 	}
 	return nil
 }
 
+// Size return a serialized size of frame in bytes
+func (f *Frame) Size() int {
+	var tagSz int
+	if f.tag8021q != nil {
+		tagSz += 4
+	}
+	// n:8 = preamble length
+	// n:n+6 = source MAC address
+	// n:n+6 = destination mac address
+	// n:n+tagSz = tag 802.1q
+	// n:n+2 = etherType
+	// n:n+pSz =  payload length
+	// n:n+4 = FCS
+	return 8 + 6 + 6 + tagSz + 2 + len(f.payload) + 4
+}
+
+// Marshal implements serialization to the byte representation
+// of the Frame structure. If the structure contains tag8021q, performs
+// additional serialization of the 802.1Q header within Frame
 func (f *Frame) Marshal() []byte {
-	sz := f.size()
+	sz := f.Size()
 	pSz := len(f.payload)
 	b := make([]byte, sz)
 	var n int
@@ -126,6 +145,8 @@ func (f *Frame) Marshal() []byte {
 	return b
 }
 
+// Unmarshal unmarshaling a sequence of bytes into a Frame structure representation.
+// If array size is less than minSize (64) returns error io.ErrUnexpectedEOF
 func Unmarshal(b []byte) (*Frame, error) {
 	f := new(Frame)
 	sz := len(b)
@@ -140,7 +161,6 @@ func Unmarshal(b []byte) (*Frame, error) {
 	n += 6
 	copy(f.src[:], b[n:n+6])
 	n += 6
-
 	etype := EtherType(binary.BigEndian.Uint16(b[n : n+2]))
 	if etype == EtherTypeVlan {
 		// have a 802.1Q tag
@@ -164,33 +184,14 @@ func Unmarshal(b []byte) (*Frame, error) {
 // which is an error-detecting code added to a frame in a communication protocol.
 // Frames are used to send payload data from a source to a destination.
 func ComputeFCS(f interface{}) (fcs [4]byte) {
-	var binaryFrame []byte
+	var b []byte
 	switch v := f.(type) {
 	case *Frame:
-		binaryFrame = v.Marshal()
+		b = v.Marshal()
 	case *Frame80211:
-		binaryFrame = v.Marshal()
+		b = v.Marshal()
 	}
-	copy(fcs[:], binaryFrame[len(binaryFrame)-4:])
+	pos := len(b) - 4
+	copy(fcs[:], b[pos:])
 	return fcs
-}
-
-const minSize = 64
-const minPayloadSize = 46
-
-func (f *Frame) size() int {
-	var tagSz int
-	if f.tag8021q != nil {
-		tagSz += 4
-	}
-
-	// n:8 = preamble length
-	// n:n+6 = source MAC address
-	// n:n+6 = destination mac address
-	// n:n+tagSz = tag 802.1q
-	// n:n+2 = etherType
-	// n:n+pSz =  payload length
-	// n:n+4 = FCS
-	pSz := len(f.payload)
-	return 8 + 6 + 6 + tagSz + 2 + pSz + 4
 }

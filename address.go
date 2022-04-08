@@ -8,6 +8,9 @@ import (
 	"fmt"
 )
 
+var BroadcastAddr = HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+var UnsetupedAddr = HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+
 // A media access control address (MAC address) is a unique identifier assigned
 // to a network interface controller (NIC) for use as a network address in communications
 // within a network segment. This use is common in most IEEE 802 networking technologies,
@@ -21,9 +24,6 @@ type HardwareAddr [6]byte
 func NewHardwareAddr(b0, b1, b2, b3, b4, b5 byte) HardwareAddr {
 	return HardwareAddr{b0, b1, b2, b3, b4, b5}
 }
-
-var BroadcastAddr = HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-var UnsetupedAddr = HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
 // Organisationally Unique Identifier
 func (h HardwareAddr) Oui() [3]byte { return [3]byte{h[0], h[1], h[2]} }

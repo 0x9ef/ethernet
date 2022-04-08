@@ -28,7 +28,6 @@ type Frame80211 struct {
 }
 
 var min80211Size = 30
-var max80211MSDU = 2304
 
 func NewFrame80211(addr1, addr2, addr3, addr4 HardwareAddr, payload []byte) *Frame80211 {
 	f := &Frame80211{
@@ -99,8 +98,23 @@ func (f *Frame80211) SetFrameControl(fc uint16) { f.fc = fc }
 func (f *Frame80211) FCS() [4]byte       { return f.fcs }
 func (f *Frame80211) SetFCS(fcs [4]byte) { f.fcs = fcs }
 
+// Size return seriailized size of frame in bytes
+func (f *Frame80211) Size() int {
+	// n:2 = frame control
+	// n+2 = duration
+	// n+6 = receiver address
+	// n+6 = transmitter address
+	// n+6 = source address
+	// n+2 = sequence control
+	// n+6 = destination address
+	// n+len(payload) = payload
+	// n+4 = FCS
+	pSz := len(f.payload)
+	return 2 + 2 + 6 + 6 + 6 + 2 + 6 + pSz + 4
+}
+
 func (f *Frame80211) Marshal() []byte {
-	sz := f.size()
+	sz := f.Size()
 	pSz := len(f.payload)
 	b := make([]byte, sz)
 	var n int
@@ -149,18 +163,4 @@ func Unmarshal80211(b []byte) (*Frame80211, error) {
 	n += pSz // + payload size
 	copy(f.fcs[:], b[n:])
 	return f, nil
-}
-
-func (f *Frame80211) size() int {
-	// n:2 = frame control
-	// n+2 = duration
-	// n+6 = receiver address
-	// n+6 = transmitter address
-	// n+6 = source address
-	// n+2 = sequence control
-	// n+6 = destination address
-	// n+len(payload) = payload
-	// n+4 = FCS
-	pSz := len(f.payload)
-	return 2 + 2 + 6 + 6 + 6 + 2 + 6 + pSz + 4
 }
