@@ -29,11 +29,11 @@ type Frame struct {
 	fcs       [4]byte
 }
 
-// ethernet native preamble 10101010 10101010 10101010 10101010 10101010 10101010 10101010 10101011
-var preamble = [8]byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAB, 0xD5}
-
 const minSize = 64
 const minPayloadSize = 46
+
+// ethernet native preamble 10101010 10101010 10101010 10101010 10101010 10101010 10101010 10101011
+var preamble = [8]byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAB, 0xD5}
 
 // NewFrame return constructed ethernet frame with basic source, destination MAC address
 // and payload which this frame contains. If payload have lengh which less than minPayloadSize
@@ -56,7 +56,6 @@ func NewFrame(dst HardwareAddr, src HardwareAddr, payload []byte) *Frame {
 		etherType: 0x0800,
 		payload:   b,
 	}
-	f.fcs = ComputeFCS(f) // setup FCS
 	return f
 }
 
@@ -102,10 +101,11 @@ func (f *Frame) Check() error {
 
 // Size return a serialized size of frame in bytes
 func (f *Frame) Size() int {
-	var tagSz int
+	var tagSize int
 	if f.tag8021q != nil {
-		tagSz += 4
+		tagSize += 4
 	}
+
 	// n:8 = preamble length
 	// n:n+6 = source MAC address
 	// n:n+6 = destination mac address
@@ -113,16 +113,10 @@ func (f *Frame) Size() int {
 	// n:n+2 = etherType
 	// n:n+pSz =  payload length
 	// n:n+4 = FCS
-	return 8 + 6 + 6 + tagSz + 2 + len(f.payload) + 4
+	return 8 + 6 + 6 + tagSize + 2 + len(f.payload) + 4
 }
 
-// Marshal implements serialization to the byte representation
-// of the Frame structure. If the structure contains tag8021q, performs
-// additional serialization of the 802.1Q header within Frame
-func (f *Frame) Marshal() []byte {
-	sz := f.Size()
-	pSz := len(f.payload)
-	b := make([]byte, sz)
+func (f *Frame) marshal(b []byte) {
 	var n int
 	copy(b[0:8], f.preamble[:])
 	n += 8
@@ -136,12 +130,33 @@ func (f *Frame) Marshal() []byte {
 		binary.BigEndian.PutUint16(b[n:n+2], uint16(f.tag8021q.Tci))
 		n += 2
 	}
-
 	binary.BigEndian.PutUint16(b[n:n+2], uint16(f.etherType))
 	n += 2
-	copy(b[n:sz-4], f.payload) // marshal payload
-	n += pSz                   // add calculate payload length
-	binary.BigEndian.PutUint32(b[n:], crc32.ChecksumIEEE(b[0:n]))
+	copy(b[n:len(b)-4], f.payload) // marshal payload
+	n += len(f.payload)            // add calculated payload length
+}
+
+// Marshal implements serialization to the byte representation
+// of the Frame structure. If the structure contains tag8021q, performs
+// additional serialization of the 802.1Q header within Frame
+func (f *Frame) Marshal() []byte {
+	b := make([]byte, f.Size())
+	f.marshal(b)
+	return b
+}
+
+// MarshalWithFCS same as Marshal, but computing a frame check sequence
+// as last 4 octets, which is an error-detecting code added to a frame in a communication protocol.
+func (f *Frame) MarshalWithFCS() []byte {
+	b := make([]byte, f.Size())
+	f.marshal(b)
+	n := len(b) - 4
+	v := crc32.ChecksumIEEE(b[0:n])
+	b[n] = byte(v >> 24)
+	b[n+1] = byte(v >> 16)
+	b[n+2] = byte(v >> 8)
+	b[n+3] = byte(v)
+	f.fcs = [4]byte{b[n], b[n+1], b[n+2], b[n+3]}
 	return b
 }
 
@@ -175,14 +190,13 @@ func Unmarshal(b []byte) (*Frame, error) {
 	}
 
 	f.payload = b[n : sz-4]
-	n += len(f.payload) // calculate payload length
+	n += len(f.payload)
 	copy(f.fcs[:], b[n:])
 	return f, nil
 }
 
 // ComputeFCS compute and return a frame check sequence (FCS)
 // which is an error-detecting code added to a frame in a communication protocol.
-// Frames are used to send payload data from a source to a destination.
 func ComputeFCS(f interface{}) (fcs [4]byte) {
 	var b []byte
 	switch v := f.(type) {
