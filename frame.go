@@ -33,7 +33,7 @@ const minSize = 64
 const minPayloadSize = 46
 
 // ethernet native preamble 10101010 10101010 10101010 10101010 10101010 10101010 10101010 10101011
-var preamble = [8]byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAB, 0xD5}
+var preamble = [8]byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAB}
 
 // NewFrame return constructed ethernet frame with basic source, destination MAC address
 // and payload which this frame contains. If payload have lengh which less than minPayloadSize
