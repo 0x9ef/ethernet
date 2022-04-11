@@ -5,7 +5,6 @@ package ethernet
 
 import (
 	"encoding/binary"
-	"errors"
 	"hash/crc32"
 	"io"
 )
@@ -20,7 +19,6 @@ import (
 // The frame ends with a frame check sequence (FCS), which is a 32-bit cyclic redundancy check
 // used to detect any in-transit  corruption of data.
 type Frame struct {
-	preamble  [8]byte      // SFD as last octet
 	dst       HardwareAddr // destination MAC address
 	src       HardwareAddr // source MAC address
 	tag8021q  *Tag8021q    // 802.1Q (can be nil)
@@ -30,10 +28,8 @@ type Frame struct {
 }
 
 const minSize = 64
+const minHeaderSize = 18
 const minPayloadSize = 46
-
-// ethernet native preamble 10101010 10101010 10101010 10101010 10101010 10101010 10101010 10101011
-var preamble = [8]byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAB}
 
 // NewFrame return constructed ethernet frame with basic source, destination MAC address
 // and payload which this frame contains. If payload have lengh which less than minPayloadSize
@@ -49,7 +45,6 @@ func NewFrame(dst HardwareAddr, src HardwareAddr, payload []byte) *Frame {
 	}
 
 	f := &Frame{
-		preamble:  preamble,
 		dst:       dst,
 		src:       src,
 		tag8021q:  nil,
@@ -91,14 +86,6 @@ func (f *Frame) SetTag8021q(tag *Tag8021q) { f.tag8021q = tag }
 func (f *Frame) FCS() [4]byte       { return f.fcs }
 func (f *Frame) SetFCS(fcs [4]byte) { f.fcs = fcs }
 
-// Check if frame has an valid ethernet preamble
-func (f *Frame) Check() error {
-	if f.preamble != preamble {
-		return errors.New("invalid ethernet preamble")
-	}
-	return nil
-}
-
 // Size return a serialized size of frame in bytes
 func (f *Frame) Size() int {
 	var tagSize int
@@ -118,8 +105,6 @@ func (f *Frame) Size() int {
 
 func (f *Frame) marshal(b []byte) {
 	var n int
-	copy(b[0:8], f.preamble[:])
-	n += 8
 	copy(b[8:14], f.dst[:])
 	n += 6
 	copy(b[14:20], f.src[:])
@@ -170,8 +155,6 @@ func Unmarshal(b []byte) (*Frame, error) {
 	}
 
 	var n int
-	copy(f.preamble[:], b[n:8])
-	n += 8
 	copy(f.dst[:], b[n:n+6])
 	n += 6
 	copy(f.src[:], b[n:n+6])
