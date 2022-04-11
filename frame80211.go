@@ -40,7 +40,6 @@ func NewFrame80211(addr1, addr2, addr3, addr4 HardwareAddr, payload []byte) *Fra
 		sc:       0,
 		payload:  payload,
 	}
-	f.fcs = ComputeFCS(f)
 	return f
 }
 
@@ -133,7 +132,9 @@ func (f *Frame80211) Marshal() []byte {
 	n += 6
 	copy(b[n:sz-4], f.payload)
 	n += pSz
-	binary.BigEndian.PutUint32(b[n:], crc32.ChecksumIEEE(b[0:n]))
+	fcs := crc32.ChecksumIEEE(b[0:n])
+	binary.BigEndian.PutUint32(f.fcs[:], fcs)
+	binary.BigEndian.PutUint32(b[n:], fcs)
 	return b
 }
 

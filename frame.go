@@ -86,36 +86,37 @@ func (f *Frame) SetTag8021q(tag *Tag8021q) { f.tag8021q = tag }
 func (f *Frame) FCS() [4]byte       { return f.fcs }
 func (f *Frame) SetFCS(fcs [4]byte) { f.fcs = fcs }
 
+// ComputeFCS compute and return a frame check sequence (FCS)
+// which is an error-detecting code added to a frame in a communication protocol.
+func (f *Frame) ComputeFCS() (fcs uint32) {
+	f.MarshalWithFCS()
+	return binary.BigEndian.Uint32(f.fcs[:])
+}
+
 // Size return a serialized size of frame in bytes
 func (f *Frame) Size() int {
-	var tagSize int
+	var tsz int
 	if f.tag8021q != nil {
-		tagSize += 4
+		tsz += 4
 	}
-
-	// n:8 = preamble length
-	// n:n+6 = source MAC address
-	// n:n+6 = destination mac address
-	// n:n+tagSz = tag 802.1q
-	// n:n+2 = etherType
-	// n:n+pSz =  payload length
-	// n:n+4 = FCS
-	return 8 + 6 + 6 + tagSize + 2 + len(f.payload) + 4
+	// minHeaderSize is
+	// 6 bytes DST + 6 bytes SRC + 4 bytes FCS
+	return minHeaderSize + tsz + len(f.payload)
 }
 
 func (f *Frame) marshal(b []byte) {
 	var n int
-	copy(b[8:14], f.dst[:])
+	copy(b, f.dst[:])
 	n += 6
-	copy(b[14:20], f.src[:])
+	copy(b[6:], f.src[:])
 	n += 6
 	if f.tag8021q != nil {
-		binary.BigEndian.PutUint16(b[n:n+2], uint16(f.tag8021q.Tpid))
+		binary.BigEndian.PutUint16(b[n:], uint16(f.tag8021q.Tpid))
 		n += 2
-		binary.BigEndian.PutUint16(b[n:n+2], uint16(f.tag8021q.Tci))
+		binary.BigEndian.PutUint16(b[n:], uint16(f.tag8021q.Tci))
 		n += 2
 	}
-	binary.BigEndian.PutUint16(b[n:n+2], uint16(f.etherType))
+	binary.BigEndian.PutUint16(b[n:], uint16(f.etherType))
 	n += 2
 	copy(b[n:len(b)-4], f.payload) // marshal payload
 	n += len(f.payload)            // add calculated payload length
@@ -136,7 +137,7 @@ func (f *Frame) MarshalWithFCS() []byte {
 	b := make([]byte, f.Size())
 	f.marshal(b)
 	n := len(b) - 4
-	v := crc32.ChecksumIEEE(b[0:n])
+	v := crc32.ChecksumIEEE(b[:n])
 	b[n] = byte(v >> 24)
 	b[n+1] = byte(v >> 16)
 	b[n+2] = byte(v >> 8)
@@ -155,7 +156,7 @@ func Unmarshal(b []byte) (*Frame, error) {
 	}
 
 	var n int
-	copy(f.dst[:], b[n:n+6])
+	copy(f.dst[:], b[:6])
 	n += 6
 	copy(f.src[:], b[n:n+6])
 	n += 6
@@ -176,19 +177,4 @@ func Unmarshal(b []byte) (*Frame, error) {
 	n += len(f.payload)
 	copy(f.fcs[:], b[n:])
 	return f, nil
-}
-
-// ComputeFCS compute and return a frame check sequence (FCS)
-// which is an error-detecting code added to a frame in a communication protocol.
-func ComputeFCS(f interface{}) (fcs [4]byte) {
-	var b []byte
-	switch v := f.(type) {
-	case *Frame:
-		b = v.Marshal()
-	case *Frame80211:
-		b = v.Marshal()
-	}
-	pos := len(b) - 4
-	copy(fcs[:], b[pos:])
-	return fcs
 }
