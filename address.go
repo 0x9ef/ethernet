@@ -5,7 +5,10 @@ package ethernet
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 var BroadcastAddr = HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
@@ -23,6 +26,23 @@ type HardwareAddr [6]byte
 // NewHardwareAddr returns a new MAC address as HardwareAddr
 func NewHardwareAddr(b0, b1, b2, b3, b4, b5 byte) HardwareAddr {
 	return HardwareAddr{b0, b1, b2, b3, b4, b5}
+}
+
+// ParseHardwareAddr parses a MAC address from the string and return HardwareAddr
+func ParseHardwareAddr(addr string) (HardwareAddr, error) {
+	b := strings.SplitN(addr, ":", 6)
+	if len(b) != 6 {
+		return HardwareAddr{}, errors.New("cannot parse hardware address, because length of blocks != 6 (48 bits)")
+	}
+	var haddr HardwareAddr
+	for i := range b {
+		v, err := strconv.ParseUint(b[i], 16, 16)
+		if err != nil {
+			return HardwareAddr{}, err
+		}
+		haddr[i] = byte(v)
+	}
+	return haddr, nil
 }
 
 // Organisationally Unique Identifier
