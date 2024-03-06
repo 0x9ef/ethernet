@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 	"io"
+	"sync"
 )
 
 // IEEE 802.11 is part of the IEEE 802 set of local area network (LAN) technical standards,
@@ -23,22 +24,30 @@ type Frame80211 struct {
 	addr3    HardwareAddr
 	sc       uint16 // sequence control
 	addr4    HardwareAddr
-	payload  []byte
-	fcs      [4]byte
+	qos      uint16 // QoS control
+	// HT Control Field is always present in a Control Wrapper frame and is present in QoS Data
+	// and management frames as determined by the order bit of the Frame Control Field.
+	// The only Control Frame subtype for which HT Control field present is the Control Wrapper frame.
+	//A control frame  that is described as + HTC (eg RTS+HTC, BlockAckReq+HTC, PS-Poll+HTC) implies the use of
+	// Control Wrapper frame to carry the control frame. Below show the frame format of a Control Wrapper
+	htc     uint32
+	payload []byte
+	fcs     [4]byte
 }
 
 var min80211Size = 30
 
-func NewFrame80211(addr1, addr2, addr3, addr4 HardwareAddr, payload []byte) *Frame80211 {
+func NewFrame80211(addr1, addr2, addr3 HardwareAddr, addr4 *HardwareAddr, fc uint16, duration uint16, payload []byte) *Frame80211 {
 	f := &Frame80211{
-		fc:       0,
-		duration: 0,
+		fc:       fc,
+		duration: duration,
 		addr1:    addr1,
 		addr2:    addr1,
 		addr3:    addr3,
-		addr4:    addr4,
-		sc:       0,
 		payload:  payload,
+	}
+	if addr4 != nil {
+		f.addr4 = *addr4
 	}
 	return f
 }
@@ -92,6 +101,15 @@ func (f *Frame80211) SetDuration(duration uint16) { f.duration = duration }
 func (f *Frame80211) FrameControl() uint16      { return f.fc }
 func (f *Frame80211) SetFrameControl(fc uint16) { f.fc = fc }
 
+func (f *Frame80211) SC() uint16      { return f.sc }
+func (f *Frame80211) SetSC(sc uint16) { f.sc = sc }
+
+func (f *Frame80211) QOS() uint16       { return f.qos }
+func (f *Frame80211) SetQOS(qos uint16) { f.qos = qos }
+
+func (f *Frame80211) HT() uint32      { return f.htc }
+func (f *Frame80211) SetHT(ht uint32) { f.htc = ht }
+
 // Frame check sequence (FCS) refers to the extra bits and characters added to
 // data packets for error detection and control.
 func (f *Frame80211) FCS() [4]byte       { return f.fcs }
@@ -99,42 +117,94 @@ func (f *Frame80211) SetFCS(fcs [4]byte) { f.fcs = fcs }
 
 // Size return seriailized size of frame in bytes
 func (f *Frame80211) Size() int {
+	// MANDATORY!
 	// n:2 = frame control
 	// n+2 = duration
 	// n+6 = receiver address
 	// n+6 = transmitter address
 	// n+6 = source address
+	n := 2 + 2 + 6 + 6 + 6
 	// n+2 = sequence control
-	// n+6 = destination address
+	if f.sc != 0 {
+		n += 2
+	}
+	// 	// n+(0 or 6) = destination address
+	if !f.addr4.IsEmpty() {
+		n += 6
+	}
+	// n+(0 or 2) = QOS Control
+	if f.qos != 0 {
+		n += 2
+	}
+	// n+(0 or 4) = HT Control
+	if f.htc != 0 {
+		n += 4
+	}
 	// n+len(payload) = payload
+	n += len(f.payload)
 	// n+4 = FCS
-	pSz := len(f.payload)
-	return 2 + 2 + 6 + 6 + 6 + 2 + 6 + pSz + 4
+	n += 4 // fcs
+	return n
+}
+
+// 802.11 frames are capable of transporting frames with an MSDU payload of 2,304 bytes of upper layer data.
+const MaxFrame8011Size = 2304
+
+var frame80211Pool = &sync.Pool{
+	New: func() interface{} {
+		return make([]byte, MaxFrame8011Size)
+	},
 }
 
 func (f *Frame80211) Marshal() []byte {
-	sz := f.Size()
-	pSz := len(f.payload)
-	b := make([]byte, sz)
-	var n int
-	binary.BigEndian.PutUint16(b[0:2], f.fc)
-	binary.BigEndian.PutUint16(b[2:4], f.duration)
-	n += 4
-	copy(b[n:n+6], f.addr1[:])
-	n += 6
-	copy(b[n:n+6], f.addr2[:])
-	n += 6
-	copy(b[n:n+6], f.addr3[:])
-	n += 6
-	binary.BigEndian.PutUint16(b[n:n+2], f.sc)
-	n += 2
-	copy(b[n:n+6], f.addr4[:])
-	n += 6
-	copy(b[n:sz-4], f.payload)
-	n += pSz
-	fcs := crc32.ChecksumIEEE(b[0:n])
-	binary.BigEndian.PutUint32(f.fcs[:], fcs)
-	binary.BigEndian.PutUint32(b[n:], fcs)
+	b := frame80211Pool.Get().([]byte)
+	defer frame80211Pool.Put(b)
+
+	b = b[:0]
+	b = append(b,
+		byte(f.fc>>8),
+		byte(f.fc),
+	)
+	b = append(b,
+		byte(f.duration>>8),
+		byte(f.duration),
+	)
+	b = append(b, f.addr1[:]...)
+	b = append(b, f.addr2[:]...)
+	b = append(b, f.addr3[:]...)
+	if f.sc != 0 {
+		b = append(b,
+			byte(f.sc>>8),
+			byte(f.sc),
+		)
+	}
+	if !f.addr4.IsEmpty() {
+		b = append(b, f.addr4[:]...)
+	}
+	if f.qos != 0 {
+		b = append(b,
+			byte(f.qos>>8),
+			byte(f.qos),
+		)
+	}
+	if f.htc != 0 {
+		b = append(b, byte(f.htc>>24),
+			byte(f.htc>>16),
+			byte(f.htc>>8),
+			byte(f.htc),
+		)
+	}
+	b = append(b, f.payload...)
+
+	sum := crc32.ChecksumIEEE(b[:])
+	f.fcs = [4]byte{
+		byte(sum >> 24),
+		byte(sum >> 16),
+		byte(sum >> 8),
+		byte(sum),
+	}
+	b = append(b, f.fcs[:]...)
+
 	return b
 }
 

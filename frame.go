@@ -5,8 +5,10 @@ package ethernet
 
 import (
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 	"io"
+	"sync"
 )
 
 // In computer networking, an Ethernet frame is a data link layer protocol data unit and uses the
@@ -31,10 +33,14 @@ const minSize = 64
 const minHeaderSize = 18
 const minPayloadSize = 46
 
+// The maximum frame size is 1518 bytes, 18 bytes of which are overhead (header and frame check sequence),
+// resulting in an MTU of 1500 bytes.
+const MaxFrameSize = 1518
+
 // NewFrame return constructed ethernet frame with basic source, destination MAC address
 // and payload which this frame contains. If payload have lengh which less than minPayloadSize
 // we fills remaining bytes with zeroes
-func NewFrame(dst HardwareAddr, src HardwareAddr, payload []byte) *Frame {
+func NewFrame(src HardwareAddr, dst HardwareAddr, payload []byte) *Frame {
 	var b []byte
 	pSz := len(payload)
 	if pSz < minPayloadSize {
@@ -81,17 +87,10 @@ func (f *Frame) Payload() []byte { return f.payload }
 func (f *Frame) Tag8021q() *Tag8021q       { return f.tag8021q }
 func (f *Frame) SetTag8021q(tag *Tag8021q) { f.tag8021q = tag }
 
-// Frame check sequence (FCS) refers to the extra bits and characters added to
+// Frame Check Sequence (FCS) refers to the extra bits and characters added to
 // data packets for error detection and control.
 func (f *Frame) FCS() [4]byte       { return f.fcs }
 func (f *Frame) SetFCS(fcs [4]byte) { f.fcs = fcs }
-
-// ComputeFCS compute and return a frame check sequence (FCS)
-// which is an error-detecting code added to a frame in a communication protocol.
-func (f *Frame) ComputeFCS() (fcs uint32) {
-	f.MarshalWithFCS()
-	return binary.BigEndian.Uint32(f.fcs[:])
-}
 
 // Size return a serialized size of frame in bytes
 func (f *Frame) Size() int {
@@ -104,55 +103,62 @@ func (f *Frame) Size() int {
 	return minHeaderSize + tsz + len(f.payload)
 }
 
-func (f *Frame) marshal(b []byte) {
-	var n int
-	copy(b, f.dst[:])
-	n += 6
-	copy(b[6:], f.src[:])
-	n += 6
+var framePool = &sync.Pool{
+	New: func() interface{} {
+		// The maximum frame size is 1518 bytes, 18 bytes of which are overhead (header and frame check sequence),
+		// resulting in an MTU of 1500 bytes.
+		return make([]byte, MaxFrameSize)
+	},
+}
+
+func (f *Frame) marshal(fcs bool) []byte {
+	b := framePool.Get().([]byte)
+	defer framePool.Put(b)
+
+	b = b[:0]
+	b = append(b, f.dst[:]...)
+	b = append(b, f.src[:]...)
 	if f.tag8021q != nil {
-		binary.BigEndian.PutUint16(b[n:], uint16(f.tag8021q.Tpid))
-		n += 2
-		binary.BigEndian.PutUint16(b[n:], uint16(f.tag8021q.Tci))
-		n += 2
+		b = append(b,
+			byte(f.tag8021q.Tpid>>8),
+			byte(f.tag8021q.Tpid),
+		)
+		b = append(b,
+			byte(f.tag8021q.Tci>>8),
+			byte(f.tag8021q.Tci),
+		)
 	}
-	binary.BigEndian.PutUint16(b[n:], uint16(f.etherType))
-	n += 2
-	copy(b[n:len(b)-4], f.payload) // marshal payload
-	n += len(f.payload)            // add calculated payload length
+	b = append(b,
+		byte(f.etherType>>8),
+		byte(f.etherType),
+	)
+	b = append(b, f.payload...)
+	fmt.Println(len(b))
+	if fcs {
+		sum := crc32.ChecksumIEEE(b[:])
+		f.fcs = [4]byte{
+			byte(sum >> 24),
+			byte(sum >> 16),
+			byte(sum >> 8), byte(sum),
+		}
+		b = append(b, f.fcs[:]...)
+	}
+	return b
 }
 
 // Marshal implements serialization to the byte representation
 // of the Frame structure. If the structure contains tag8021q, performs
 // additional serialization of the 802.1Q header within Frame
 func (f *Frame) Marshal() []byte {
-	b := make([]byte, f.Size())
-	f.marshal(b)
-	return b
-}
-
-// MarshalWithFCS same as Marshal, but computing a frame check sequence
-// as last 4 octets, which is an error-detecting code added to a frame in a communication protocol.
-func (f *Frame) MarshalWithFCS() []byte {
-	b := make([]byte, f.Size())
-	f.marshal(b)
-	n := len(b) - 4
-	v := crc32.ChecksumIEEE(b[:n])
-	b[n] = byte(v >> 24)
-	b[n+1] = byte(v >> 16)
-	b[n+2] = byte(v >> 8)
-	b[n+3] = byte(v)
-	f.fcs = [4]byte{b[n], b[n+1], b[n+2], b[n+3]}
-	return b
+	return f.marshal(true)
 }
 
 // Unmarshal unmarshaling a sequence of bytes into a Frame structure representation.
 // If array size is less than minSize (64) returns error io.ErrUnexpectedEOF
-func Unmarshal(b []byte) (*Frame, error) {
-	f := new(Frame)
+func Unmarshal(b []byte, f *Frame) error {
 	sz := len(b)
 	if sz < minSize {
-		return nil, io.ErrUnexpectedEOF
+		return io.ErrUnexpectedEOF
 	}
 
 	var n int
@@ -176,5 +182,5 @@ func Unmarshal(b []byte) (*Frame, error) {
 	f.payload = b[n : sz-4]
 	n += len(f.payload)
 	copy(f.fcs[:], b[n:])
-	return f, nil
+	return nil
 }
