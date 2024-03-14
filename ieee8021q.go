@@ -13,11 +13,11 @@ const maxDei = 1     // from 0-1
 const maxVlan = 4095 // from 0-4095
 
 // Encode8021qTCI encodes PCP, DEI, VLAN using bitwise operations.
-func Encode8021qTCI(pcp uint16, dei uint16, vlan uint16) uint16 {
-	return (vlan << 4) | (dei << 3) | pcp
+func Encode8021qTCI(pcp PCP, dei uint16, vlan uint16) uint16 {
+	return (vlan << 4) | (dei << 3) | uint16(pcp)
 }
 
 // Decode8021qTCI decodes encoded TCI to 3 universal values PCP, DEI, VLAN
-func Decode8021qTCI(encoded uint16) (pcp uint16, dei uint16, vlan uint16) {
-	return encoded & maxPcp, (encoded >> 3) & maxDei, (encoded >> 4) & maxVlan
+func Decode8021qTCI(encoded uint16) (pcp PCP, dei uint16, vlan uint16) {
+	return PCP(encoded & maxPcp), (encoded >> 3) & maxDei, (encoded >> 4) & maxVlan
 }

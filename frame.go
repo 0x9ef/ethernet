@@ -5,8 +5,10 @@ package ethernet
 
 import (
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -29,6 +31,22 @@ type Frame struct {
 	etherType EtherType
 	payload   []byte
 	fcs       [4]byte
+}
+
+func (f *Frame) String() string {
+	var sb strings.Builder
+	sb.WriteString("dst=" + f.dst.String())
+	sb.WriteString(" src=" + f.src.String())
+	sb.WriteString(fmt.Sprintf(" etherType=%X", f.EtherType()))
+	if f.tag8021q != nil {
+		sb.WriteString(fmt.Sprintf(" vlan[tpid=0x%X", f.tag8021q.TPID))
+		pcp, dei, vlan := Decode8021qTCI(f.tag8021q.TCI)
+		sb.WriteString(fmt.Sprintf(" pcp=0x%X(%s)", uint16(pcp), pcp.String()))
+		sb.WriteString(fmt.Sprintf(" dei=0x%X", dei))
+		sb.WriteString(fmt.Sprintf(" vlan=0x%X]", vlan))
+	}
+	sb.WriteString(fmt.Sprintf(" size=%d", f.Size()))
+	return sb.String()
 }
 
 // minHeaderSize is 6 bytes DST + 6 bytes SRC + 4 bytes FCS

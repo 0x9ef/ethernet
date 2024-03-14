@@ -1,6 +1,7 @@
 package ethernet
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestFrameMarshal(t *testing.T) {
 			dst:  HardwareAddr{255, 255, 255, 50, 50, 50},
 			tag8021q: &Tag8021Q{
 				TPID: 0x15,
-				TCI:  0x55,
+				TCI:  Encode8021qTCI(PcpBE, 1, 1024),
 			},
 			payload: []byte("HELLO"),
 			wantLen: 68,
@@ -45,6 +46,7 @@ func TestFrameMarshal(t *testing.T) {
 			if tc.tag8021q != nil {
 				f.SetTag8021Q(tc.tag8021q)
 			}
+			fmt.Println(f.String())
 			b := f.Marshal()
 			assert.NotEmpty(t, b)
 			assert.Len(t, b, tc.wantLen)
