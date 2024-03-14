@@ -1,7 +1,6 @@
 package ethernet
 
 import (
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -14,14 +13,14 @@ func TestFrameMarshal(t *testing.T) {
 		name     string
 		src      HardwareAddr
 		dst      HardwareAddr
-		tag8021q *Tag8021q
+		tag8021q *Tag8021Q
 		payload  []byte
 		wantLen  int
 	}
 
 	testCases := []suite{
 		{
-			name:    "positive_minimum",
+			name:    "positive_min_padding",
 			src:     HardwareAddr{127, 127, 127, 50, 50, 50},
 			dst:     HardwareAddr{255, 255, 255, 50, 50, 50},
 			payload: []byte("HELLO"),
@@ -31,9 +30,9 @@ func TestFrameMarshal(t *testing.T) {
 			name: "positive_tag8021q",
 			src:  HardwareAddr{127, 127, 127, 50, 50, 50},
 			dst:  HardwareAddr{255, 255, 255, 50, 50, 50},
-			tag8021q: &Tag8021q{
-				Tpid: 0x15,
-				Tci:  0x55,
+			tag8021q: &Tag8021Q{
+				TPID: 0x15,
+				TCI:  0x55,
 			},
 			payload: []byte("HELLO"),
 			wantLen: 68,
@@ -42,12 +41,11 @@ func TestFrameMarshal(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := NewFrame(tc.src, tc.dst, tc.payload)
+			f := NewFrame(tc.src, tc.dst, EtherTypeIPv4, tc.payload)
 			if tc.tag8021q != nil {
-				f.SetTag8021q(tc.tag8021q)
+				f.SetTag8021Q(tc.tag8021q)
 			}
 			b := f.Marshal()
-			fmt.Println(b)
 			assert.NotEmpty(t, b)
 			assert.Len(t, b, tc.wantLen)
 		})
@@ -64,7 +62,7 @@ func generatePayload() []byte {
 func BenchmarkFrameMarshal(b *testing.B) {
 	payload := generatePayload()
 	b.ResetTimer()
-	f := NewFrame(HardwareAddr{127, 127, 127, 50, 50, 50}, HardwareAddr{255, 255, 255, 50, 50, 50}, payload)
+	f := NewFrame(HardwareAddr{127, 127, 127, 50, 50, 50}, HardwareAddr{255, 255, 255, 50, 50, 50}, EtherTypeIPv4, payload)
 	for i := 0; i < b.N; i++ {
 		_ = f.Marshal()
 	}
@@ -80,7 +78,7 @@ func TestFrameUnmarshal(t *testing.T) {
 
 	testCases := []suite{
 		{
-			name:            "positive_minimum_fcs",
+			name:            "positive_min_fcs",
 			data:            []byte{127, 127, 127, 50, 50, 50, 255, 255, 255, 50, 50, 50, 8, 0, 72, 69, 76, 76, 79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 123, 123, 123, 123},
 			wantSource:      HardwareAddr{255, 255, 255, 50, 50, 50},
 			wantDestination: HardwareAddr{127, 127, 127, 50, 50, 50},
@@ -107,7 +105,7 @@ func TestFrameUnmarshal(t *testing.T) {
 
 func BenchmarkFrameUnmarshal(b *testing.B) {
 	payload := generatePayload()
-	data := NewFrame(HardwareAddr{127, 127, 127, 50, 50, 50}, HardwareAddr{255, 255, 255, 50, 50, 50}, payload).Marshal()
+	data := NewFrame(HardwareAddr{127, 127, 127, 50, 50, 50}, HardwareAddr{255, 255, 255, 50, 50, 50}, EtherTypeIPv4, payload).Marshal()
 	for i := 0; i < b.N; i++ {
 		var f Frame
 		err := Unmarshal(data, &f)

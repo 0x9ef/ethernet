@@ -4,12 +4,12 @@
 package ethernet
 
 const (
-	PcpBE = iota // Best Effort
-	PcpBK        // Background
-	PcpEE        // Excellent Effort
-	PcpCA        // Critical Applications
-	PcpVI        // Video, < 100 ms latency and jitter
-	PcpVO        // Voice, < 10 ms latency and jitter
-	PcpIC        // Internetwork Control
-	PCpNC        // Network Control (highest)
+	PcpBE = iota + 1 // Best Effort
+	PcpBK            // Background
+	PcpEE            // Excellent Effort
+	PcpCA            // Critical Applications
+	PcpVI            // Video, < 100 ms latency and jitter
+	PcpVO            // Voice, < 10 ms latency and jitter
+	PcpIC            // Internetwork Control
+	PCpNC            // Network Control (highest)
 )

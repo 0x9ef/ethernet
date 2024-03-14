@@ -12,7 +12,7 @@ import (
 )
 
 var BroadcastAddr = HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-var UnsetupedAddr = HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+var EmptyAddr = HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
 // A media access control address (MAC address) is a unique identifier assigned
 // to a network interface controller (NIC) for use as a network address in communications
@@ -51,7 +51,7 @@ func (h HardwareAddr) Oui() [3]byte { return [3]byte{h[0], h[1], h[2]} }
 // Network Interface Controller
 func (h HardwareAddr) Nic() [3]byte { return [3]byte{h[3], h[4], h[5]} }
 
-// String stringify hexadecimal MAC address to output string.
+// String stringifies hexadecimal MAC address to output string.
 // You have to manually check if the mac address is correct
 func (h HardwareAddr) String() string {
 	return fmt.Sprintf("%.2x:%.2x:%.2x:%.2x:%.2x:%.2x",
@@ -59,12 +59,12 @@ func (h HardwareAddr) String() string {
 	)
 }
 
-// Compare comparing two MAC address for equality
+// Compare compares two MAC addresses for equality
 func (h HardwareAddr) Compare(raddr HardwareAddr) bool {
 	return bytes.Compare(h[:], raddr[:]) == 0
 }
 
 // IsEmpty returns true if MAC address have only zeroes
 func (h HardwareAddr) IsEmpty() bool {
-	return h == HardwareAddr{0, 0, 0, 0, 0, 0}
+	return h == EmptyAddr
 }

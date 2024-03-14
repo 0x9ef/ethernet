@@ -5,7 +5,6 @@ package ethernet
 
 import (
 	"encoding/binary"
-	"fmt"
 	"hash/crc32"
 	"io"
 	"sync"
@@ -20,27 +19,35 @@ import (
 // other protocols (for example, Internet Protocol) carried in the frame.
 // The frame ends with a frame check sequence (FCS), which is a 32-bit cyclic redundancy check
 // used to detect any in-transit  corruption of data.
+//
+// Preamble and SFD don't count into size of Ethernet frame size, because the physical layer
+// determines where the frame starts.
 type Frame struct {
 	dst       HardwareAddr // destination MAC address
 	src       HardwareAddr // source MAC address
-	tag8021q  *Tag8021q    // 802.1Q (can be nil)
+	tag8021q  *Tag8021Q    // 802.1Q (can be nil)
 	etherType EtherType
 	payload   []byte
 	fcs       [4]byte
 }
 
-const minSize = 64
+// minHeaderSize is 6 bytes DST + 6 bytes SRC + 4 bytes FCS
 const minHeaderSize = 18
 const minPayloadSize = 46
 
-// The maximum frame size is 1518 bytes, 18 bytes of which are overhead (header and frame check sequence),
-// resulting in an MTU of 1500 bytes.
-const MaxFrameSize = 1518
+const (
+	// The minimal frame size is 64 bytes, comprising an 18-byte header and a payload of 46 bytes.
+	MinFrameSize           = 64
+	MinFrameSizeWithoutFCS = 60
+	// The maximum frame size is 1518 bytes, 18 bytes of which are overhead (header and frame check sequence),
+	// resulting in an MTU of 1500 bytes.
+	MaxFrameSize = 1518
+)
 
 // NewFrame return constructed ethernet frame with basic source, destination MAC address
 // and payload which this frame contains. If payload have lengh which less than minPayloadSize
 // we fills remaining bytes with zeroes
-func NewFrame(src HardwareAddr, dst HardwareAddr, payload []byte) *Frame {
+func NewFrame(src HardwareAddr, dst HardwareAddr, etherType EtherType, payload []byte) *Frame {
 	var b []byte
 	pSz := len(payload)
 	if pSz < minPayloadSize {
@@ -54,7 +61,7 @@ func NewFrame(src HardwareAddr, dst HardwareAddr, payload []byte) *Frame {
 		dst:       dst,
 		src:       src,
 		tag8021q:  nil,
-		etherType: 0x0800,
+		etherType: etherType,
 		payload:   b,
 	}
 	return f
@@ -78,14 +85,14 @@ func (f *Frame) EtherType() EtherType { return f.etherType }
 // Non-standard jumbo frames allow for larger maximum payload size.
 func (f *Frame) Payload() []byte { return f.payload }
 
-// Tag8021q IEEE 802.1Q, often referred to as Dot1q, is the networking standard that
+// Tag8021Q IEEE 802.1Q, often referred to as Dot1q, is the networking standard that
 // supports virtual LANs (VLANs) on an IEEE 802.3 Ethernet network.
 // The standard defines a system of VLAN tagging for Ethernet frames and the accompanying
 // procedures to be used by bridges and switches in handling such frames.
 // The standard also contains provisions for a quality-of-service (QOS) prioritization scheme commonly
 // known as IEEE 802.1p and defines the Generic Attribute Registration Protocol.
-func (f *Frame) Tag8021q() *Tag8021q       { return f.tag8021q }
-func (f *Frame) SetTag8021q(tag *Tag8021q) { f.tag8021q = tag }
+func (f *Frame) Tag8021Q() *Tag8021Q       { return f.tag8021q }
+func (f *Frame) SetTag8021Q(tag *Tag8021Q) { f.tag8021q = tag }
 
 // Frame Check Sequence (FCS) refers to the extra bits and characters added to
 // data packets for error detection and control.
@@ -105,13 +112,11 @@ func (f *Frame) Size() int {
 
 var framePool = &sync.Pool{
 	New: func() interface{} {
-		// The maximum frame size is 1518 bytes, 18 bytes of which are overhead (header and frame check sequence),
-		// resulting in an MTU of 1500 bytes.
 		return make([]byte, MaxFrameSize)
 	},
 }
 
-func (f *Frame) marshal(fcs bool) []byte {
+func (f *Frame) marshal() []byte {
 	b := framePool.Get().([]byte)
 	defer framePool.Put(b)
 
@@ -120,12 +125,12 @@ func (f *Frame) marshal(fcs bool) []byte {
 	b = append(b, f.src[:]...)
 	if f.tag8021q != nil {
 		b = append(b,
-			byte(f.tag8021q.Tpid>>8),
-			byte(f.tag8021q.Tpid),
+			byte(f.tag8021q.TPID>>8),
+			byte(f.tag8021q.TPID),
 		)
 		b = append(b,
-			byte(f.tag8021q.Tci>>8),
-			byte(f.tag8021q.Tci),
+			byte(f.tag8021q.TCI>>8),
+			byte(f.tag8021q.TCI),
 		)
 	}
 	b = append(b,
@@ -133,31 +138,29 @@ func (f *Frame) marshal(fcs bool) []byte {
 		byte(f.etherType),
 	)
 	b = append(b, f.payload...)
-	fmt.Println(len(b))
-	if fcs {
-		sum := crc32.ChecksumIEEE(b[:])
-		f.fcs = [4]byte{
-			byte(sum >> 24),
-			byte(sum >> 16),
-			byte(sum >> 8), byte(sum),
-		}
-		b = append(b, f.fcs[:]...)
+
+	sum := crc32.ChecksumIEEE(b[:])
+	f.fcs = [4]byte{
+		byte(sum >> 24),
+		byte(sum >> 16),
+		byte(sum >> 8), byte(sum),
 	}
+	b = append(b, f.fcs[:]...)
 	return b
 }
 
-// Marshal implements serialization to the byte representation
-// of the Frame structure. If the structure contains tag8021q, performs
-// additional serialization of the 802.1Q header within Frame
+// Marshal serializes frame into the byte representation.
+// If the structure contains 802.1Q tag, performs an additional
+// encoding of the 802.1Q header within the frame.
 func (f *Frame) Marshal() []byte {
-	return f.marshal(true)
+	return f.marshal()
 }
 
 // Unmarshal unmarshaling a sequence of bytes into a Frame structure representation.
 // If array size is less than minSize (64) returns error io.ErrUnexpectedEOF
 func Unmarshal(b []byte, f *Frame) error {
 	sz := len(b)
-	if sz < minSize {
+	if sz < MinFrameSizeWithoutFCS {
 		return io.ErrUnexpectedEOF
 	}
 
@@ -169,9 +172,9 @@ func Unmarshal(b []byte, f *Frame) error {
 	etype := EtherType(binary.BigEndian.Uint16(b[n : n+2]))
 	if etype == EtherTypeVlan {
 		// have a 802.1Q tag
-		f.tag8021q = new(Tag8021q)
-		f.tag8021q.Tpid = uint16(etype)
-		f.tag8021q.Tci = binary.BigEndian.Uint16(b[n+2 : n+4])
+		f.tag8021q = new(Tag8021Q)
+		f.tag8021q.TPID = uint16(etype)
+		f.tag8021q.TCI = binary.BigEndian.Uint16(b[n+2 : n+4])
 		f.etherType = EtherType(binary.BigEndian.Uint16(b[n+4 : n+6]))
 		n += 6
 	} else {

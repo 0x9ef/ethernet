@@ -13,7 +13,7 @@ package ethernet
 type EtherType uint16
 
 const (
-	EtypeTypeIpv4 EtherType = 0x8000
+	EtherTypeIPv4 EtherType = 0x8000
 	EtherTypeIPv6 EtherType = 0x86DD
 	EtherTypeVlan EtherType = 0x8100
 )

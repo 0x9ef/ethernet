@@ -18,7 +18,7 @@ func TestFrame80211Marshal(t *testing.T) {
 		qos      uint16
 		ht       uint32
 		sc       uint16
-		tag8021q *Tag8021q
+		tag8021q *Tag8021Q
 		payload  []byte
 		wantLen  int
 	}
